@@ -1,0 +1,13 @@
+Flask
+python-dotenv
+
+langchain
+langchain-community
+langchain-openai
+langchain-text-splitters
+langchain-classic
+
+faiss-cpu
+
+pypdf
+unstructured
