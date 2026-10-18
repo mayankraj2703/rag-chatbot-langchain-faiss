@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Customer Retention Assistant</title>
+<style>
+  :root {
+    --bg: #eef2f6; --surface: #ffffff; --text: #14212b; --muted: #5b6b78;
+    --line: #d3dce4; --accent: #0b6e8a; --accent-text: #ffffff;
+    --user-bg: #0b6e8a; --user-text: #ffffff; --error: #b3261e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f171e; --surface: #17222b; --text: #e6edf2; --muted: #93a4b1;
+      --line: #2a3945; --accent: #4fb3cf; --accent-text: #0f171e;
+      --user-bg: #1f5f74; --user-text: #f2fbff; --error: #f2b8b5;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+    font-size: 16px; line-height: 1.5; display: flex; justify-content: center;
+  }
+  .app { width: 100%; max-width: 760px; height: 100%; display: flex; flex-direction: column; }
+  header {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 16px 20px; border-bottom: 1px solid var(--line); background: var(--surface);
+  }
+  header h1 { margin: 0; font-size: 1.1rem; font-weight: 600; }
+  header p { margin: 2px 0 0; font-size: 0.85rem; color: var(--muted); }
+  button {
+    font: inherit; cursor: pointer; border-radius: 6px; padding: 8px 14px;
+    border: 1px solid var(--line); background: transparent; color: var(--text);
+  }
+  button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; }
+  button:disabled { opacity: 0.55; cursor: not-allowed; }
+  button:focus-visible, textarea:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  #log { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 12px; }
+  .msg { max-width: 85%; padding: 10px 14px; border-radius: 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .msg.bot { align-self: flex-start; background: var(--surface); border: 1px solid var(--line); }
+  .msg.user { align-self: flex-end; background: var(--user-bg); color: var(--user-text); }
+  .msg.error { align-self: flex-start; border: 1px solid var(--error); color: var(--error); background: var(--surface); }
+  .empty { margin: auto; text-align: center; color: var(--muted); max-width: 40ch; }
+  form { display: flex; gap: 10px; padding: 14px 20px; border-top: 1px solid var(--line); background: var(--surface); }
+  textarea {
+    flex: 1; resize: none; font: inherit; color: var(--text); background: var(--bg);
+    border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; min-height: 44px; max-height: 140px;
+  }
+  @media (prefers-reduced-motion: no-preference) { .msg { animation: in 0.15s ease-out; } }
+  @keyframes in { from { opacity: 0; } to { opacity: 1; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div>
+      <h1>Customer Retention Assistant</h1>
+      <p>Answers come from the documents loaded into the knowledge base.</p>
+    </div>
+    <button type="button" id="clear">New conversation</button>
+  </header>
+
+  <main id="log" aria-live="polite">
+    <p class="empty" id="empty">Ask about plans, offers or retention policies to get started.</p>
+  </main>
+
+  <form id="form">
+    <textarea id="q" rows="1" placeholder="Type your question" aria-label="Your question" required></textarea>
+    <button type="submit" class="primary" id="send">Send</button>
+  </form>
+</div>
+
+<script>
+  const log = document.getElementById('log');
+  const form = document.getElementById('form');
+  const q = document.getElementById('q');
+  const send = document.getElementById('send');
+
+  function add(text, cls) {
+    const empty = document.getElementById('empty');
+    if (empty) empty.remove();
+    const d = document.createElement('div');
+    d.className = 'msg ' + cls;
+    d.textContent = text;          // textContent keeps user and model text from running as HTML
+    log.appendChild(d);
+    log.scrollTop = log.scrollHeight;
+    return d;
+  }
+
+  async function ask(question) {
+    add(question, 'user');
+    const wait = add('Searching the documents…', 'bot');
+    send.disabled = true;
+    try {
+      const res = await fetch('/get_answer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question })
+      });
+      const data = await res.json();
+      wait.remove();
+      if (!res.ok) { add(data.error || 'Something went wrong. Try again.', 'error'); }
+      else { add(data.answer, 'bot'); }
+    } catch (e) {
+      wait.remove();
+      add('Could not reach the server. Check that it is running and try again.', 'error');
+    } finally {
+      send.disabled = false;
+      q.focus();
+    }
+  }
+
+  form.addEventListener('submit', e => {
+    e.preventDefault();
+    const text = q.value.trim();
+    if (!text) return;
+    q.value = '';
+    ask(text);
+  });
+
+  q.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); }
+  });
+
+  document.getElementById('clear').addEventListener('click', async () => {
+    try { await fetch('/clear_chat', { method: 'POST' }); } catch (e) {}
+    log.innerHTML = '<p class="empty" id="empty">Conversation cleared. Ask a new question.</p>';
+  });
+</script>
+</body>
+</html>
